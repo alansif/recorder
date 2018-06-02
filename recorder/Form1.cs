@@ -22,13 +22,37 @@ namespace recorder
         private System.Timers.Timer timer = new System.Timers.Timer(1000);
         private int count = 0;
 
+        private static int fftLength = 1024; // NAudio fft wants powers of two!
+        private SampleAggregator sampleAggregator = new SampleAggregator(fftLength);
+
         public Form1()
         {
             InitializeComponent();
             waveIn.DataAvailable += waveIn_DataAvailable;
             waveIn.RecordingStopped += waveIn_RecordingStopped;
-            timer.Elapsed += new System.Timers.ElapsedEventHandler(timerHandler);
-            timer.AutoReset = true;
+//            timer.Elapsed += new System.Timers.ElapsedEventHandler(timerHandler);
+//            timer.AutoReset = true;
+            sampleAggregator.FftCalculated += new EventHandler<FftEventArgs>(FftCalculated);
+            sampleAggregator.PerformFFT = true;
+            Console.WriteLine(waveIn.WaveFormat.SampleRate);
+        }
+
+        void FftCalculated(object sender, FftEventArgs e)
+        {
+            // Do something with e.result!
+            if (this.InvokeRequired)
+            {
+                this.BeginInvoke(new EventHandler<FftEventArgs>(FftCalculated), sender, e);
+            }
+            else
+            {
+                float[] bbb = new float[1024];
+                for (int i = 0; i < 1024; ++i)
+                {
+                    bbb[i] = (float)Math.Sqrt(Math.Pow(e.Result[i].X, 2.0) + Math.Pow(e.Result[i].Y, 2.0));
+                }
+                chart1.Series["Series1"].Points.DataBindY(bbb);
+            }
         }
 
         private void timerHandler(object source, System.Timers.ElapsedEventArgs e)
@@ -67,24 +91,28 @@ namespace recorder
 
         void waveIn_DataAvailable(object sender, WaveInEventArgs e)
         {
-            // write recorded data to MP3 writer
-            if (wri != null)
-                wri.Write(e.Buffer, 0, e.BytesRecorded);
-            float max = 0;
-            var buffer = new WaveBuffer(e.Buffer);
-            // interpret as 32 bit floating point audio
-            for (int index = 0; index < e.BytesRecorded / 2; index++)
             {
-                var sample = buffer.ShortBuffer[index];
-                // to floating point
-                var sample32 = sample / 32768f;
-                // absolute value 
-                if (sample32 < 0) sample32 = -sample32;
-                // is this the max value?
-                if (sample32 > max) max = sample32;
+                // write recorded data to MP3 writer
+                if (wri != null)
+                    wri.Write(e.Buffer, 0, e.BytesRecorded);
+                float max = 0;
+                var buffer = new WaveBuffer(e.Buffer);
+                // interpret as 32 bit floating point audio
+                for (int index = 0; index < e.BytesRecorded / 2; index++)
+                {
+                    var sample = buffer.ShortBuffer[index];
+                    // to floating point
+                    var sample32 = sample / 32768f;
+                    //for fft
+                    sampleAggregator.Add(sample32);
+                    // absolute value 
+                    if (sample32 < 0) sample32 = -sample32;
+                    // is this the max value?
+                    if (sample32 > max) max = sample32;
+                }
+                MyDelegate md = new MyDelegate(showResult);
+                this.BeginInvoke(md, this, max);
             }
-            MyDelegate md = new MyDelegate(showResult);
-            this.BeginInvoke(md, this, max);
         }
 
         public static void showResult(Form1 f, float v)
@@ -123,6 +151,17 @@ namespace recorder
         void WebClientUploadCompleted(object sender, UploadFileCompletedEventArgs e)
         {
             Console.WriteLine("completed. ");
+        }
+
+        float[] aaa = new float[10];
+
+        private void button1_Click(object sender, EventArgs e)
+        {
+            for (int i = 0; i < 10; ++i)
+            {
+                aaa[i] = 1.0f / (i+1);
+            }
+            chart1.Series["Series1"].Points.DataBindY(aaa);
         }
     }
 }
